@@ -111,6 +111,10 @@ brew_has_cask() {
     brew list --cask 2>/dev/null | grep -qxF "$1"
 }
 
+brew_has_formula() {
+    brew list --formula 2>/dev/null | grep -qxF "$1"
+}
+
 app_bundle_path() { # app name, bundle id
     local name="$1" bundle_id="$2" candidate
     for candidate in "$APPLICATIONS_DIR/$name.app" "$HOME/Applications/$name.app"; do

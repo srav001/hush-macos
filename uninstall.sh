@@ -62,6 +62,15 @@ if grep -q '^installed-cask ' "$MANIFEST"; then
     done < <(sed -n 's/^installed-cask //p' "$MANIFEST")
 fi
 
+if grep -q '^installed-formula ' "$MANIFEST"; then
+    log "Removing command-line tools added by Hush"
+    while IFS= read -r formula; do
+        if [ -n "$formula" ] && brew_has_formula "$formula"; then
+            brew uninstall "$formula" || failed "Could not uninstall $formula"
+        fi
+    done < <(sed -n 's/^installed-formula //p' "$MANIFEST")
+fi
+
 if have "installed-tap nikitabobko/tap" && brew tap 2>/dev/null | grep -qxF nikitabobko/tap; then
     brew untap nikitabobko/tap || failed "Could not remove nikitabobko/tap"
 fi

@@ -19,6 +19,7 @@ parts I use, simplified and tuned for my Mac and workflow.
 - Native Swift bar with workspaces, brightness, volume, battery and clock
 - Ghostty with RobotoMono Nerd Font, launched with `Super+Enter`
 - Tinycast on `Command+Space`, replacing Spotlight
+- Codex CLI, OpenCode and Neovim
 - Native macOS fullscreen and trackpad Space gestures
 - Automatic light and dark bar colours matching my Codex themes
 
@@ -44,7 +45,7 @@ cd ~/.local/share/hush
 The installer is safe to re-run. It converges the machine toward the same
 setup without reinstalling applications unnecessarily:
 
-1. Reuses existing Ghostty or Tinycast apps, even without Homebrew receipts.
+1. Reuses existing supported apps or CLI tools, even without Homebrew receipts.
 2. Repairs Homebrew-managed apps whose application bundle was moved or removed.
 3. Installs only missing apps, then atomically applies the Hush configurations.
 4. Compiles and signs the small native bar locally, then starts one LaunchAgent.
@@ -99,7 +100,7 @@ and menu-bar settings are restored. Apps that already existed are not removed.
 
 ## Structure
 
-- `Brewfile` declares the five required casks.
+- `Brewfile` declares six casks and two command-line formulae.
 - `config/` contains only the three managed app configurations.
 - `helper/bar.swift` is the single native bar process.
 - `scripts/lib.sh` owns backup, atomic replacement and restoration primitives.

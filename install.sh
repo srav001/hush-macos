@@ -71,6 +71,19 @@ for specification in "ghostty|Ghostty|com.mitchellh.ghostty" "tinycast|Tinycast|
         log "Reusing existing $app"
     fi
 done
+if ! brew_has_cask codex && command -v codex >/dev/null 2>&1; then
+    skip_casks="${skip_casks:+$skip_casks }codex"
+    log "Reusing existing Codex CLI"
+fi
+
+skip_formulae=""
+for specification in "neovim|nvim" "opencode|opencode"; do
+    IFS='|' read -r formula binary <<< "$specification"
+    if ! brew_has_formula "$formula" && command -v "$binary" >/dev/null 2>&1; then
+        skip_formulae="${skip_formulae:+$skip_formulae }$formula"
+        log "Reusing existing $binary"
+    fi
+done
 
 while IFS= read -r cask; do
     if ! brew_has_cask "$cask" && [[ " $skip_casks " != *" $cask "* ]]; then
@@ -79,7 +92,14 @@ while IFS= read -r cask; do
     fi
 done < <(brew bundle list --cask --file="$REPO_DIR/Brewfile")
 
+while IFS= read -r formula; do
+    if ! brew_has_formula "$formula" && [[ " $skip_formulae " != *" $formula "* ]]; then
+        mark "installed-formula $formula"
+    fi
+done < <(brew bundle list --formula --file="$REPO_DIR/Brewfile")
+
 HOMEBREW_BUNDLE_CASK_SKIP="$skip_casks" \
+HOMEBREW_BUNDLE_BREW_SKIP="$skip_formulae" \
     brew bundle --no-upgrade --file="$REPO_DIR/Brewfile" ||
     die "Homebrew did not complete; resolve the error and run install.sh again"
 
@@ -90,6 +110,25 @@ for specification in "ghostty|Ghostty|com.mitchellh.ghostty" "tinycast|Tinycast|
         brew reinstall --cask "$cask"
     fi
     app_bundle_path "$app" "$bundle_id" >/dev/null || die "$app is installed but cannot be found"
+done
+
+brew_prefix="$(brew --prefix)"
+for specification in "codex|codex|cask" "neovim|nvim|formula" "opencode|opencode|formula"; do
+    IFS='|' read -r package binary type <<< "$specification"
+    if { [ "$type" = cask ] && brew_has_cask "$package"; } ||
+        { [ "$type" = formula ] && brew_has_formula "$package"; }; then
+        if [ ! -x "$brew_prefix/bin/$binary" ]; then
+            log "Repairing missing $binary executable"
+            if [ "$type" = cask ]; then
+                brew reinstall --cask "$package"
+            else
+                brew reinstall "$package"
+            fi
+        fi
+        [ -x "$brew_prefix/bin/$binary" ] || die "$binary is installed but cannot be executed"
+    else
+        command -v "$binary" >/dev/null 2>&1 || die "$binary is installed but cannot be found"
+    fi
 done
 
 ghostty_app="$(app_bundle_path Ghostty com.mitchellh.ghostty)"
@@ -211,6 +250,6 @@ Hush installed. One-time permissions:
   1. AeroSpace: Privacy & Security -> Accessibility
   2. Karabiner-Elements: approve its driver and Input Monitoring
 
-Ghostty and Tinycast were reused when already present; their Hush settings are repaired on every run.
+Existing supported apps and command-line tools were reused; Hush settings are repaired on every run.
 Uninstall: ./uninstall.sh
 EOF

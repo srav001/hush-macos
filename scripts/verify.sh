@@ -38,7 +38,14 @@ if rg -n '\.zshrc|TrackpadFourFinger|aerospace-swipe' install.sh uninstall.sh sc
     exit 1
 fi
 
-expected_casks=$'aerospace\nfont-roboto-mono-nerd-font\nghostty\nkarabiner-elements\ntinycast'
+expected_formulae=$'neovim\nopencode'
+actual_formulae="$(brew bundle list --formula --file=Brewfile | sort)"
+[ "$actual_formulae" = "$expected_formulae" ] || {
+    printf 'Unexpected Brewfile formulae:\n%s\n' "$actual_formulae" >&2
+    exit 1
+}
+
+expected_casks=$'aerospace\ncodex\nfont-roboto-mono-nerd-font\nghostty\nkarabiner-elements\ntinycast'
 actual_casks="$(brew bundle list --cask --file=Brewfile | sort)"
 [ "$actual_casks" = "$expected_casks" ] || {
     printf 'Unexpected Brewfile casks:\n%s\n' "$actual_casks" >&2

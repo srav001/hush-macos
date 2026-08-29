@@ -14,6 +14,19 @@ set -e
 has_cask() { [ -f "$MOCK_STATE/casks" ] && grep -qxF "$1" "$MOCK_STATE/casks"; }
 add_cask() { has_cask "$1" || printf '%s\n' "$1" >> "$MOCK_STATE/casks"; }
 remove_cask() { grep -vxF "$1" "$MOCK_STATE/casks" > "$MOCK_STATE/casks.next" || true; mv "$MOCK_STATE/casks.next" "$MOCK_STATE/casks"; }
+has_formula() { [ -f "$MOCK_STATE/formulae" ] && grep -qxF "$1" "$MOCK_STATE/formulae"; }
+add_formula() { has_formula "$1" || printf '%s\n' "$1" >> "$MOCK_STATE/formulae"; }
+remove_formula() { grep -vxF "$1" "$MOCK_STATE/formulae" > "$MOCK_STATE/formulae.next" || true; mv "$MOCK_STATE/formulae.next" "$MOCK_STATE/formulae"; }
+make_cli() {
+    case "$1" in codex) binary=codex ;; neovim) binary=nvim ;; opencode) binary=opencode ;; esac
+    mkdir -p "$MOCK_BREW_PREFIX/bin"
+    printf '#!/usr/bin/env bash\nprintf "mock %s\\n"\n' "$binary" > "$MOCK_BREW_PREFIX/bin/$binary"
+    chmod +x "$MOCK_BREW_PREFIX/bin/$binary"
+}
+remove_cli() {
+    case "$1" in codex) binary=codex ;; neovim) binary=nvim ;; opencode) binary=opencode ;; esac
+    rm -f "$MOCK_BREW_PREFIX/bin/$binary"
+}
 make_app() {
     mkdir -p "$HUSH_APPLICATIONS_DIR/$1.app/Contents/MacOS"
     plutil -create xml1 "$HUSH_APPLICATIONS_DIR/$1.app/Contents/Info.plist"
@@ -27,8 +40,14 @@ make_app() {
 }
 
 case "${1:-}" in
+  --prefix) printf '%s\n' "$MOCK_BREW_PREFIX"; exit 0 ;;
   list)
-    [ "${2:-}" = --cask ] && { [ ! -f "$MOCK_STATE/casks" ] || cat "$MOCK_STATE/casks"; exit 0; } ;;
+    if [ "${2:-}" = --cask ]; then
+        [ ! -f "$MOCK_STATE/casks" ] || cat "$MOCK_STATE/casks"
+    elif [ "${2:-}" = --formula ]; then
+        [ ! -f "$MOCK_STATE/formulae" ] || cat "$MOCK_STATE/formulae"
+    fi
+    exit 0 ;;
   tap)
     [ "$#" -eq 1 ] && { [ ! -f "$MOCK_STATE/taps" ] || cat "$MOCK_STATE/taps"; exit 0; } ;;
   trust)
@@ -36,35 +55,64 @@ case "${1:-}" in
     exit 0 ;;
   bundle)
     if [ "${2:-}" = list ]; then
-        printf 'aerospace\nfont-roboto-mono-nerd-font\nghostty\nkarabiner-elements\ntinycast\n'
+        if [[ " $* " = *" --formula "* ]]; then
+            printf 'neovim\nopencode\n'
+        else
+            printf 'aerospace\ncodex\nfont-roboto-mono-nerd-font\nghostty\nkarabiner-elements\ntinycast\n'
+        fi
         exit 0
     fi
-    printf 'bundle-skip %s\n' "${HOMEBREW_BUNDLE_CASK_SKIP:-}" >> "$MOCK_STATE/actions"
+    printf 'bundle-cask-skip %s\n' "${HOMEBREW_BUNDLE_CASK_SKIP:-}" >> "$MOCK_STATE/actions"
+    printf 'bundle-brew-skip %s\n' "${HOMEBREW_BUNDLE_BREW_SKIP:-}" >> "$MOCK_STATE/actions"
     printf 'nikitabobko/tap\n' > "$MOCK_STATE/taps"
-    ghostty_existed=false; tinycast_existed=false
+    ghostty_existed=false; tinycast_existed=false; codex_existed=false
+    neovim_existed=false; opencode_existed=false
     has_cask ghostty && ghostty_existed=true
     has_cask tinycast && tinycast_existed=true
+    has_cask codex && codex_existed=true
+    has_formula neovim && neovim_existed=true
+    has_formula opencode && opencode_existed=true
     add_cask aerospace
     if [ "${FAIL_BUNDLE:-0}" = 1 ]; then exit 1; fi
-    for cask in font-roboto-mono-nerd-font ghostty karabiner-elements tinycast; do
+    for cask in codex font-roboto-mono-nerd-font ghostty karabiner-elements tinycast; do
         case " ${HOMEBREW_BUNDLE_CASK_SKIP:-} " in *" $cask "*) continue ;; esac
         add_cask "$cask"
     done
+    for formula in neovim opencode; do
+        case " ${HOMEBREW_BUNDLE_BREW_SKIP:-} " in *" $formula "*) continue ;; esac
+        add_formula "$formula"
+    done
     $ghostty_existed || { has_cask ghostty && make_app Ghostty; }
     $tinycast_existed || { has_cask tinycast && make_app Tinycast; }
+    $codex_existed || { has_cask codex && make_cli codex; }
+    $neovim_existed || { has_formula neovim && make_cli neovim; }
+    $opencode_existed || { has_formula opencode && make_cli opencode; }
     exit 0 ;;
   reinstall)
-    printf 'reinstall %s\n' "$3" >> "$MOCK_STATE/actions"
-    add_cask "$3"
-    [ "$3" = ghostty ] && make_app Ghostty
-    [ "$3" = tinycast ] && make_app Tinycast
+    if [ "${2:-}" = --cask ]; then
+        package="$3"; add_cask "$package"
+        [ "$package" = ghostty ] && make_app Ghostty
+        [ "$package" = tinycast ] && make_app Tinycast
+    else
+        package="$2"; add_formula "$package"
+    fi
+    printf 'reinstall %s\n' "$package" >> "$MOCK_STATE/actions"
+    case "$package" in codex|neovim|opencode) make_cli "$package" ;; esac
     exit 0 ;;
   uninstall)
-    cask="$3"
-    [ "${FAIL_UNINSTALL:-}" != "$cask" ] || exit 1
-    remove_cask "$cask"
-    [ "$cask" != ghostty ] || rm -rf "$HUSH_APPLICATIONS_DIR/Ghostty.app"
-    [ "$cask" != tinycast ] || rm -rf "$HUSH_APPLICATIONS_DIR/Tinycast.app"
+    if [ "${2:-}" = --cask ]; then
+        package="$3"
+        [ "${FAIL_UNINSTALL:-}" != "$package" ] || exit 1
+        remove_cask "$package"
+        [ "$package" != ghostty ] || rm -rf "$HUSH_APPLICATIONS_DIR/Ghostty.app"
+        [ "$package" != tinycast ] || rm -rf "$HUSH_APPLICATIONS_DIR/Tinycast.app"
+        [ "$package" != codex ] || remove_cli codex
+    else
+        package="$2"
+        [ "${FAIL_UNINSTALL:-}" != "$package" ] || exit 1
+        remove_formula "$package"
+        remove_cli "$package"
+    fi
     exit 0 ;;
   untap)
     [ "${FAIL_UNTAP:-0}" != 1 ] || exit 1
@@ -124,7 +172,9 @@ new_home() {
     export HOME="$TEST_DIR/$name/home"
     export MOCK_STATE="$TEST_DIR/$name/state"
     export HUSH_APPLICATIONS_DIR="$TEST_DIR/$name/Applications"
-    mkdir -p "$HOME" "$MOCK_STATE" "$HUSH_APPLICATIONS_DIR"
+    export MOCK_BREW_PREFIX="$TEST_DIR/$name/brew"
+    export PATH="$HOME/bin:$MOCK_BIN:$MOCK_BREW_PREFIX/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    mkdir -p "$HOME" "$MOCK_STATE" "$HUSH_APPLICATIONS_DIR" "$MOCK_BREW_PREFIX/bin"
     : > "$MOCK_STATE/actions"
     plutil -create xml1 "$MOCK_STATE/spotlight.plist"
     plutil -insert AppleSymbolicHotKeys -dictionary "$MOCK_STATE/spotlight.plist"
@@ -132,8 +182,6 @@ new_home() {
         '{"enabled":true,"value":{"type":"standard","parameters":[32,49,1048576]}}' \
         "$MOCK_STATE/spotlight.plist"
 }
-
-export PATH="$MOCK_BIN:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Existing external apps are reused, settings converge, and the second run
 # keeps the original backups—including a symlink.
@@ -167,16 +215,24 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$HUSH_APPLICATIONS_DIR/Ghostty.app/Con
 chmod +x "$HUSH_APPLICATIONS_DIR/Ghostty.app/Contents/MacOS/ghostty"
 printf '1\n' > "$MOCK_STATE/default-com.tinycast.app-showInMenuBar"
 printf 'old\n' > "$MOCK_STATE/default-com.tinycast.app-hotkey.togglePalette"
+mkdir -p "$HOME/bin"
+for binary in codex opencode nvim; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$HOME/bin/$binary"
+    chmod +x "$HOME/bin/$binary"
+done
 
 "$REPO_DIR/install.sh" >/dev/null
 "$REPO_DIR/install.sh" >/dev/null
 unset FAIL_BOOTSTRAP_ONCE
 test -f "$MOCK_STATE/bootstrap-failed"
-grep -q '^bundle-skip ghostty tinycast$' "$MOCK_STATE/actions"
+grep -q '^bundle-cask-skip ghostty tinycast codex$' "$MOCK_STATE/actions"
+grep -q '^bundle-brew-skip neovim opencode$' "$MOCK_STATE/actions"
 test ! -L "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
 grep -qxF '0' "$MOCK_STATE/default-com.tinycast.app-showInMenuBar"
 grep -qxF 'installed-cask aerospace' "$HOME/.local/state/hush/manifest"
 ! grep -qxF 'installed-cask ghostty' "$HOME/.local/state/hush/manifest"
+! grep -qxF 'installed-cask codex' "$HOME/.local/state/hush/manifest"
+! grep -q '^installed-formula ' "$HOME/.local/state/hush/manifest"
 "$REPO_DIR/uninstall.sh" >/dev/null
 test -L "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
 [ "$(readlink "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty")" = "$HOME/ghostty-original" ]
@@ -187,6 +243,9 @@ grep -qxF 'old' "$MOCK_STATE/default-com.tinycast.app-hotkey.togglePalette"
 ! plutil -type AppleSymbolicHotKeys.65 "$MOCK_STATE/spotlight.plist" >/dev/null 2>&1
 test -d "$HUSH_APPLICATIONS_DIR/Ghostty.app"
 test -d "$HUSH_APPLICATIONS_DIR/Tinycast.app"
+test -x "$HOME/bin/codex"
+test -x "$HOME/bin/opencode"
+test -x "$HOME/bin/nvim"
 test ! -e "$HOME/.local/state/hush"
 
 # A partial Homebrew failure leaves ownership and recovery state for a safe rerun.
@@ -199,13 +258,26 @@ fi
 unset FAIL_BUNDLE
 test -f "$HOME/.local/state/hush/manifest"
 grep -qxF 'installed-cask tinycast' "$HOME/.local/state/hush/manifest"
+grep -qxF 'installed-formula opencode' "$HOME/.local/state/hush/manifest"
+"$REPO_DIR/install.sh" >/dev/null
+test -x "$MOCK_BREW_PREFIX/bin/codex"
+test -x "$MOCK_BREW_PREFIX/bin/opencode"
+test -x "$MOCK_BREW_PREFIX/bin/nvim"
+"$REPO_DIR/uninstall.sh" >/dev/null
+test ! -x "$MOCK_BREW_PREFIX/bin/codex"
+test ! -x "$MOCK_BREW_PREFIX/bin/opencode"
+test ! -x "$MOCK_BREW_PREFIX/bin/nvim"
 
 # Homebrew receipts with accidentally removed app bundles are repaired.
 new_home repair
-printf 'aerospace\nfont-roboto-mono-nerd-font\nghostty\nkarabiner-elements\ntinycast\n' > "$MOCK_STATE/casks"
+printf 'aerospace\ncodex\nfont-roboto-mono-nerd-font\nghostty\nkarabiner-elements\ntinycast\n' > "$MOCK_STATE/casks"
+printf 'neovim\nopencode\n' > "$MOCK_STATE/formulae"
 "$REPO_DIR/install.sh" >/dev/null
+grep -qxF 'reinstall codex' "$MOCK_STATE/actions"
 grep -qxF 'reinstall ghostty' "$MOCK_STATE/actions"
 grep -qxF 'reinstall tinycast' "$MOCK_STATE/actions"
+grep -qxF 'reinstall neovim' "$MOCK_STATE/actions"
+grep -qxF 'reinstall opencode' "$MOCK_STATE/actions"
 test -x "$HUSH_APPLICATIONS_DIR/Ghostty.app/Contents/MacOS/ghostty"
 test -d "$HUSH_APPLICATIONS_DIR/Tinycast.app"
 
