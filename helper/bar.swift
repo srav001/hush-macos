@@ -253,7 +253,8 @@ func updateBattery() {
 
 func updateClock() {
     let formatter = DateFormatter()
-    formatter.dateFormat = "EEE d MMM  HH:mm"
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "EEE d MMM  h:mm a"
     setState { $0.clock = formatter.string(from: Date()) }
 }
 
