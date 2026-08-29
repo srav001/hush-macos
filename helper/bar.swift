@@ -91,7 +91,7 @@ func aerospace(_ args: [String]) -> String {
     return String(data: data, encoding: .utf8) ?? ""
 }
 
-struct State {
+struct State: Equatable {
     var workspace = ""
     var brightness: Int?
     var volume: Int?
@@ -112,7 +112,9 @@ func repaint() {
 }
 
 func setState(_ change: (inout State) -> Void) {
+    let previous = state
     change(&state)
+    guard state != previous else { return }
     repaint()
 }
 
