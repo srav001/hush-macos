@@ -1,5 +1,4 @@
-# Minimal AeroSpace configuration.
-# Caps Lock is remapped by Karabiner to cmd+ctrl+alt (the "Super" key).
+# Minimal AeroSpace configuration using the physical Control key directly.
 
 config-version = 2
 start-at-login = true
@@ -29,61 +28,58 @@ outer.right = 8
 outer.top = [{ monitor.'built-in' = 10 }, 42]
 
 [[on-window-detected]]
-if.app-id = 'org.pqrs.Karabiner-Elements.Settings'
-run = 'layout floating'
-
-[[on-window-detected]]
 if.app-id = 'com.apple.systempreferences'
 run = 'layout floating'
 
 [mode.main.binding]
 # Existing applications
-cmd-ctrl-alt-enter = 'exec-and-forget open -na Ghostty'
+ctrl-enter = 'exec-and-forget open -na Ghostty'
 
 # Window lifecycle and layout
-cmd-ctrl-alt-w = 'close'
-cmd-ctrl-alt-t = 'layout floating tiling'
-cmd-ctrl-alt-j = 'layout tiles horizontal vertical'
-cmd-ctrl-alt-f = 'macos-native-fullscreen'
-cmd-ctrl-alt-minus = 'resize smart -50'
-cmd-ctrl-alt-equal = 'resize smart +50'
+ctrl-w = 'close'
+ctrl-q = 'exec-and-forget "$HOME/.local/bin/hush-bar" --quit-frontmost'
+ctrl-t = 'layout floating tiling'
+ctrl-j = 'layout tiles horizontal vertical'
+ctrl-f = 'macos-native-fullscreen'
+ctrl-minus = 'resize smart -50'
+ctrl-equal = 'resize smart +50'
 
 # Focus
-cmd-ctrl-alt-left = 'focus left'
-cmd-ctrl-alt-down = 'focus down'
-cmd-ctrl-alt-up = 'focus up'
-cmd-ctrl-alt-right = 'focus right'
+ctrl-left = 'focus left'
+ctrl-down = 'focus down'
+ctrl-up = 'focus up'
+ctrl-right = 'focus right'
 
 # Move windows
-cmd-ctrl-alt-shift-left = 'move left'
-cmd-ctrl-alt-shift-down = 'move down'
-cmd-ctrl-alt-shift-up = 'move up'
-cmd-ctrl-alt-shift-right = 'move right'
+ctrl-shift-left = 'move left'
+ctrl-shift-down = 'move down'
+ctrl-shift-up = 'move up'
+ctrl-shift-right = 'move right'
 
 # Workspaces
-cmd-ctrl-alt-1 = 'workspace 1'
-cmd-ctrl-alt-2 = 'workspace 2'
-cmd-ctrl-alt-3 = 'workspace 3'
-cmd-ctrl-alt-4 = 'workspace 4'
-cmd-ctrl-alt-5 = 'workspace 5'
-cmd-ctrl-alt-6 = 'workspace 6'
-cmd-ctrl-alt-7 = 'workspace 7'
-cmd-ctrl-alt-8 = 'workspace 8'
-cmd-ctrl-alt-9 = 'workspace 9'
+ctrl-1 = 'workspace 1'
+ctrl-2 = 'workspace 2'
+ctrl-3 = 'workspace 3'
+ctrl-4 = 'workspace 4'
+ctrl-5 = 'workspace 5'
+ctrl-6 = 'workspace 6'
+ctrl-7 = 'workspace 7'
+ctrl-8 = 'workspace 8'
+ctrl-9 = 'workspace 9'
 
-cmd-ctrl-alt-shift-1 = ['move-node-to-workspace 1', 'workspace 1']
-cmd-ctrl-alt-shift-2 = ['move-node-to-workspace 2', 'workspace 2']
-cmd-ctrl-alt-shift-3 = ['move-node-to-workspace 3', 'workspace 3']
-cmd-ctrl-alt-shift-4 = ['move-node-to-workspace 4', 'workspace 4']
-cmd-ctrl-alt-shift-5 = ['move-node-to-workspace 5', 'workspace 5']
-cmd-ctrl-alt-shift-6 = ['move-node-to-workspace 6', 'workspace 6']
-cmd-ctrl-alt-shift-7 = ['move-node-to-workspace 7', 'workspace 7']
-cmd-ctrl-alt-shift-8 = ['move-node-to-workspace 8', 'workspace 8']
-cmd-ctrl-alt-shift-9 = ['move-node-to-workspace 9', 'workspace 9']
-cmd-ctrl-alt-tab = 'workspace-back-and-forth'
+ctrl-shift-1 = ['move-node-to-workspace 1', 'workspace 1']
+ctrl-shift-2 = ['move-node-to-workspace 2', 'workspace 2']
+ctrl-shift-3 = ['move-node-to-workspace 3', 'workspace 3']
+ctrl-shift-4 = ['move-node-to-workspace 4', 'workspace 4']
+ctrl-shift-5 = ['move-node-to-workspace 5', 'workspace 5']
+ctrl-shift-6 = ['move-node-to-workspace 6', 'workspace 6']
+ctrl-shift-7 = ['move-node-to-workspace 7', 'workspace 7']
+ctrl-shift-8 = ['move-node-to-workspace 8', 'workspace 8']
+ctrl-shift-9 = ['move-node-to-workspace 9', 'workspace 9']
+ctrl-tab = 'workspace-back-and-forth'
 
 # Explicit resize mode for longer adjustments.
-cmd-ctrl-alt-r = 'mode resize'
+ctrl-r = 'mode resize'
 
 [mode.resize.binding]
 h = 'resize width -50'

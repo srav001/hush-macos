@@ -9,9 +9,11 @@ trap 'rm -rf "$VERIFY_DIR"' EXIT
 cd "$REPO_DIR"
 
 bash -n install.sh uninstall.sh scripts/lib.sh scripts/verify.sh scripts/test-installer.sh
-jq empty config/karabiner/karabiner.json
 [ "$(rg -c '^\[mode\..*\.binding\]$' config/aerospace/aerospace.toml)" -eq 2 ]
-[ "$(rg -c '^cmd-ctrl-alt-[1-9] = ' config/aerospace/aerospace.toml)" -eq 9 ]
+[ "$(rg -c '^ctrl-[1-9] = ' config/aerospace/aerospace.toml)" -eq 9 ]
+rg -qxF "ctrl-w = 'close'" config/aerospace/aerospace.toml
+rg -qxF "ctrl-q = 'exec-and-forget \"\$HOME/.local/bin/hush-bar\" --quit-frontmost'" \
+    config/aerospace/aerospace.toml
 
 ghostty="/Applications/Ghostty.app/Contents/MacOS/ghostty"
 [ ! -x "$ghostty" ] || "$ghostty" +validate-config \
@@ -45,7 +47,7 @@ actual_formulae="$(brew bundle list --formula --file=Brewfile | sort)"
     exit 1
 }
 
-expected_casks=$'aerospace\ncodex\nfont-roboto-mono-nerd-font\nghostty\nkarabiner-elements\ntinycast'
+expected_casks=$'aerospace\ncodex\nfont-roboto-mono-nerd-font\nghostty\ntinycast'
 actual_casks="$(brew bundle list --cask --file=Brewfile | sort)"
 [ "$actual_casks" = "$expected_casks" ] || {
     printf 'Unexpected Brewfile casks:\n%s\n' "$actual_casks" >&2

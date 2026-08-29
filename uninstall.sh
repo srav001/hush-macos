@@ -27,7 +27,7 @@ log "Restoring previous configurations"
 while IFS='|' read -r name _ destination _; do
     restore_file "$destination" "$name" || failed "Could not restore $destination"
 done < <(config_rows)
-rmdir "$HOME/.config/aerospace" "$HOME/.config/karabiner" 2>/dev/null || true
+rmdir "$HOME/.config/aerospace" 2>/dev/null || true
 
 restore_default NSGlobalDomain _HIHideMenuBar bool menu-bar ||
     failed "Could not restore the desktop menu bar setting"

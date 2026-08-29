@@ -67,7 +67,6 @@ restore_file() { # destination, backup name
 config_rows() {
     printf '%s\n' \
         "aerospace.toml|$REPO_DIR/config/aerospace/aerospace.toml|$HOME/.config/aerospace/aerospace.toml|600" \
-        "karabiner.json|$REPO_DIR/config/karabiner/karabiner.json|$HOME/.config/karabiner/karabiner.json|600" \
         "ghostty|$REPO_DIR/config/ghostty/config|$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty|644"
 }
 

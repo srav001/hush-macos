@@ -58,7 +58,7 @@ case "${1:-}" in
         if [[ " $* " = *" --formula "* ]]; then
             printf 'neovim\nopencode\n'
         else
-            printf 'aerospace\ncodex\nfont-roboto-mono-nerd-font\nghostty\nkarabiner-elements\ntinycast\n'
+            printf 'aerospace\ncodex\nfont-roboto-mono-nerd-font\nghostty\ntinycast\n'
         fi
         exit 0
     fi
@@ -74,7 +74,7 @@ case "${1:-}" in
     has_formula opencode && opencode_existed=true
     add_cask aerospace
     if [ "${FAIL_BUNDLE:-0}" = 1 ]; then exit 1; fi
-    for cask in codex font-roboto-mono-nerd-font ghostty karabiner-elements tinycast; do
+    for cask in codex font-roboto-mono-nerd-font ghostty tinycast; do
         case " ${HOMEBREW_BUNDLE_CASK_SKIP:-} " in *" $cask "*) continue ;; esac
         add_cask "$cask"
     done
@@ -200,7 +200,9 @@ had-file karabiner.json
 recorded-file karabiner.json
 menu-bar ABSENT
 menu-bar-fullscreen 1
+installed-cask karabiner-elements
 LEGACY
+printf 'karabiner-elements\n' > "$MOCK_STATE/casks"
 printf 'previous ghostty target\n' > "$HOME/ghostty-original"
 ln -s "$HOME/ghostty-original" "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
 mkdir -p "$HUSH_APPLICATIONS_DIR/Ghostty.app/Contents/MacOS" \
@@ -230,9 +232,12 @@ grep -q '^bundle-brew-skip neovim opencode$' "$MOCK_STATE/actions"
 test ! -L "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
 grep -qxF '0' "$MOCK_STATE/default-com.tinycast.app-showInMenuBar"
 grep -qxF 'installed-cask aerospace' "$HOME/.local/state/hush/manifest"
+grep -qxF 'retired-karabiner' "$HOME/.local/state/hush/manifest"
 ! grep -qxF 'installed-cask ghostty' "$HOME/.local/state/hush/manifest"
 ! grep -qxF 'installed-cask codex' "$HOME/.local/state/hush/manifest"
 ! grep -q '^installed-formula ' "$HOME/.local/state/hush/manifest"
+! grep -qxF karabiner-elements "$MOCK_STATE/casks"
+grep -qxF '{"previous":"karabiner"}' "$HOME/.config/karabiner/karabiner.json"
 "$REPO_DIR/uninstall.sh" >/dev/null
 test -L "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
 [ "$(readlink "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty")" = "$HOME/ghostty-original" ]
@@ -247,6 +252,24 @@ test -x "$HOME/bin/codex"
 test -x "$HOME/bin/opencode"
 test -x "$HOME/bin/nvim"
 test ! -e "$HOME/.local/state/hush"
+
+# A failed privileged Karabiner removal leaves its active configuration intact.
+new_home migration_failure
+mkdir -p "$HOME/.config/karabiner" "$HOME/.local/state/hush"
+printf '{"active":"karabiner"}\n' > "$HOME/.config/karabiner/karabiner.json"
+cat > "$HOME/.local/state/hush/manifest" <<'LEGACY'
+recorded-file karabiner.json
+installed-cask karabiner-elements
+LEGACY
+printf 'karabiner-elements\n' > "$MOCK_STATE/casks"
+export FAIL_UNINSTALL=karabiner-elements
+if "$REPO_DIR/install.sh" >/dev/null 2>&1; then
+    printf 'Installer ignored a failed Karabiner removal.\n' >&2
+    exit 1
+fi
+unset FAIL_UNINSTALL
+grep -qxF '{"active":"karabiner"}' "$HOME/.config/karabiner/karabiner.json"
+! grep -qxF retired-karabiner "$HOME/.local/state/hush/manifest"
 
 # A partial Homebrew failure leaves ownership and recovery state for a safe rerun.
 new_home partial
@@ -280,6 +303,7 @@ grep -qxF 'reinstall neovim' "$MOCK_STATE/actions"
 grep -qxF 'reinstall opencode' "$MOCK_STATE/actions"
 test -x "$HUSH_APPLICATIONS_DIR/Ghostty.app/Contents/MacOS/ghostty"
 test -d "$HUSH_APPLICATIONS_DIR/Tinycast.app"
+grep -qxF karabiner-elements "$MOCK_STATE/casks"
 
 # Missing recovery data makes uninstall fail without deleting the remaining state.
 new_home recovery
@@ -302,4 +326,4 @@ if "$REPO_DIR/install.sh" >/dev/null 2>&1; then
     exit 1
 fi
 
-printf 'PASS: app reuse, idempotency, symlinks, partial failure and recovery\n'
+printf 'PASS: app reuse, migration, idempotency, symlinks, partial failure and recovery\n'

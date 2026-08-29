@@ -1,7 +1,7 @@
 # Hush
 
-A quiet, minimal macOS environment with tiled workspaces, a native bar, a real
-Super key, Ghostty and Tinycast.
+A quiet, minimal macOS environment with tiled workspaces, a native bar,
+Control-based shortcuts, Ghostty and Tinycast.
 
 ## Why Hush exists
 
@@ -15,9 +15,9 @@ parts I use, simplified and tuned for my Mac and workflow.
 ## Current setup
 
 - AeroSpace tiling with nine workspaces
-- Caps Lock as Super through Karabiner-Elements; tap it for Escape
+- Physical Control as the window-management modifier
 - Native Swift bar with workspaces, brightness, volume, battery and clock
-- Ghostty with RobotoMono Nerd Font, launched with `Super+Enter`
+- Ghostty with RobotoMono Nerd Font, launched with `Control+Enter`
 - Tinycast on `Command+Space`, replacing Spotlight
 - Codex CLI, OpenCode and Neovim
 - Native macOS fullscreen and trackpad Space gestures
@@ -57,31 +57,29 @@ recovery data remains in place for the next run.
 
 ## Permissions
 
-Two permissions are required once:
+One permission is required once:
 
 1. Give AeroSpace access in **System Settings → Privacy & Security → Accessibility**.
-2. Approve Karabiner-Elements' driver and Input Monitoring access.
 
 The Hush bar requires no privacy permissions.
 
 ## Keybindings
 
-Hold Caps Lock for Super. Tap it for Escape.
-
 | Key | Action |
 |---|---|
-| `Super+Enter` | Open a new Ghostty window |
-| `Super+W` | Close window |
-| `Super+arrows` | Focus by direction |
-| `Super+Shift+arrows` | Move window |
-| `Super+1…9` | Switch workspace |
-| `Super+Shift+1…9` | Move window and follow it |
-| `Super+Tab` | Previous workspace |
-| `Super+T` | Toggle floating |
-| `Super+J` | Cycle tile orientation |
-| `Super+F` | Native macOS fullscreen |
-| `Super+-` / `Super+=` | Resize |
-| `Super+R` | Enter resize mode; use `h/j/k/l` and Escape to exit |
+| `Control+Enter` | Open a new Ghostty window |
+| `Control+w` | Close the focused window |
+| `Control+q` | Quit the current app |
+| `Control+arrows` | Focus by direction |
+| `Control+Shift+arrows` | Move window |
+| `Control+1…9` | Switch workspace |
+| `Control+Shift+1…9` | Move window and follow it |
+| `Control+Tab` | Previous workspace |
+| `Control+t` | Toggle floating |
+| `Control+j` | Cycle tile orientation |
+| `Control+f` | Native macOS fullscreen |
+| `Control+-` / `Control+=` | Resize |
+| `Control+r` | Enter resize mode; use `h/j/k/l` and Escape to exit |
 
 Scroll over the brightness or volume items to adjust them. Click volume to
 mute. Native trackpad gestures continue to switch macOS Spaces rather than
@@ -94,14 +92,14 @@ cd ~/.local/share/hush
 ./uninstall.sh
 ```
 
-Only changes recorded by the installer are removed. Previous AeroSpace,
-Karabiner and Ghostty configuration, Tinycast preferences, Spotlight shortcuts
-and menu-bar settings are restored. Apps that already existed are not removed.
+Only changes recorded by the installer are removed. Previous AeroSpace and
+Ghostty configuration, Tinycast preferences, Spotlight shortcuts and menu-bar
+settings are restored. Apps that already existed are not removed.
 
 ## Structure
 
-- `Brewfile` declares six casks and two command-line formulae.
-- `config/` contains only the three managed app configurations.
+- `Brewfile` declares five casks and two command-line formulae.
+- `config/` contains only the two managed app configurations.
 - `helper/bar.swift` is the single native bar process.
 - `scripts/lib.sh` owns backup, atomic replacement and restoration primitives.
 - `scripts/verify.sh` and `scripts/test-installer.sh` verify the build and recovery behavior.
@@ -109,8 +107,7 @@ and menu-bar settings are restored. Apps that already existed are not removed.
 ## Credits
 
 Hush is derived from [OMACOSY](https://github.com/paulsp94/omacosy) and uses
-[AeroSpace](https://github.com/nikitabobko/AeroSpace) and
-[Karabiner-Elements](https://karabiner-elements.pqrs.org).
+[AeroSpace](https://github.com/nikitabobko/AeroSpace).
 
 MIT licensed. The original and modification notices are preserved in
 [LICENSE](LICENSE).

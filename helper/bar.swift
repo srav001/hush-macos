@@ -8,6 +8,14 @@ import CoreAudio
 import Darwin
 import IOKit.ps
 
+if CommandLine.arguments.dropFirst().elementsEqual(["--quit-frontmost"]) {
+    guard let application = NSWorkspace.shared.frontmostApplication,
+          application.processIdentifier != getpid(), application.terminate() else {
+        exit(EXIT_FAILURE)
+    }
+    exit(EXIT_SUCCESS)
+}
+
 // DisplayServices is the private API used by Control Center for the built-in
 // panel. Resolve it at runtime so a missing private framework cannot crash-loop
 // the bar; failure simply hides the brightness item.

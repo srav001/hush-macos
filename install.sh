@@ -41,6 +41,23 @@ migrate_default() { # legacy manifest name
 migrate_default menu-bar
 migrate_default menu-bar-fullscreen
 
+# Retire the former Caps Lock remap without touching independently installed
+# Karabiner setups. The legacy manifest is the proof that Hush managed it.
+if have "recorded-file karabiner.json" && ! have retired-karabiner; then
+    log "Removing the former Caps Lock remap"
+    if have "installed-cask karabiner-elements" && brew_has_cask karabiner-elements; then
+        brew uninstall --cask karabiner-elements ||
+            die "Karabiner-Elements could not be removed"
+    fi
+    restore_file "$HOME/.config/karabiner/karabiner.json" karabiner.json ||
+        die "the previous Karabiner configuration could not be restored"
+    rmdir "$HOME/.config/karabiner" 2>/dev/null || true
+    launchctl enable "gui/$UID_N/org.pqrs.service.agent.Karabiner-Menu" 2>/dev/null || true
+    launchctl enable "gui/$UID_N/org.pqrs.service.agent.Karabiner-NotificationWindow" \
+        2>/dev/null || true
+    mark retired-karabiner
+fi
+
 while IFS='|' read -r name _ destination _; do
     record_file "$destination" "$name"
 done < <(config_rows)
@@ -134,7 +151,6 @@ done
 ghostty_app="$(app_bundle_path Ghostty com.mitchellh.ghostty)"
 "$ghostty_app/Contents/MacOS/ghostty" +validate-config \
     --config-file="$REPO_DIR/config/ghostty/config"
-jq empty "$REPO_DIR/config/karabiner/karabiner.json"
 
 log "Installing configurations atomically"
 while IFS='|' read -r _ source destination mode; do
@@ -222,33 +238,14 @@ done
 $bar_started || die "The Hush bar LaunchAgent could not be started"
 launchctl kickstart -k "gui/$UID_N/$BAR_LABEL"
 
-# Clear persistent overrides left by Hush's first installer once. The current
-# design only stops these optional helpers for this login session.
-if grep -q '^menu-bar ' "$MANIFEST" && ! have cleared-legacy-karabiner-overrides; then
-    launchctl enable "gui/$UID_N/org.pqrs.service.agent.Karabiner-Menu" 2>/dev/null || true
-    launchctl enable "gui/$UID_N/org.pqrs.service.agent.Karabiner-NotificationWindow" \
-        2>/dev/null || true
-    mark cleared-legacy-karabiner-overrides
-fi
-launchctl kickstart -k "gui/$UID_N/org.pqrs.service.agent.karabiner_console_user_server" \
-    2>/dev/null || true
-for agent in Karabiner-Menu Karabiner-NotificationWindow; do
-    launchctl bootout "gui/$UID_N/org.pqrs.service.agent.$agent" 2>/dev/null || true
-done
-
 open -g -a Tinycast
 killall cfprefsd 2>/dev/null || true
 killall SystemUIServer 2>/dev/null || true
 
-if ! launchctl list 2>/dev/null | grep -q org.pqrs.service.agent.karabiner_console_user_server; then
-    open -a Karabiner-Elements
-fi
-
 cat <<'EOF'
 
 Hush installed. One-time permissions:
-  1. AeroSpace: Privacy & Security -> Accessibility
-  2. Karabiner-Elements: approve its driver and Input Monitoring
+  AeroSpace: Privacy & Security -> Accessibility
 
 Existing supported apps and command-line tools were reused; Hush settings are repaired on every run.
 Uninstall: ./uninstall.sh
