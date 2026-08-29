@@ -1,0 +1,3 @@
+.DS_Store
+*.bak.*
+config/apps.local.conf
