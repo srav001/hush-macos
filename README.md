@@ -1,7 +1,7 @@
 # Hush
 
-A minimal, opinionated macOS environment built around fast window management,
-a native status bar and a real Super key.
+A quiet, minimal macOS environment with tiled workspaces, a native bar, a real
+Super key, Ghostty and Tinycast.
 
 ## Why Hush exists
 
@@ -17,16 +17,14 @@ parts I use, simplified and tuned for my Mac and workflow.
 - AeroSpace tiling with nine workspaces
 - Caps Lock as Super through Karabiner-Elements; tap it for Escape
 - Native Swift bar with workspaces, brightness, volume, battery and clock
-- Ghostty launched with `Super+Enter`
+- Ghostty with RobotoMono Nerd Font, launched with `Super+Enter`
+- Tinycast on `Command+Space`, replacing Spotlight
 - Native macOS fullscreen and trackpad Space gestures
 - Automatic light and dark bar colours matching my Codex themes
 
-There are no focused-window borders, focus-follows-mouse, custom trackpad
-hooks, workspace overview, weather, media, Wi-Fi, Bluetooth, wallpaper or
-theme services. The bar has no network access or telemetry.
-
-This first version leaves existing Ghostty, Tinycast and shell configuration
-untouched. They will become part of the wider Hush environment separately.
+Hush deliberately has no focused-window borders, focus-follows-mouse, custom
+trackpad hooks, workspace overview, weather, media, Wi-Fi, Bluetooth, wallpaper
+or theme services. The bar has no network access or telemetry.
 
 ## Requirements
 
@@ -43,16 +41,18 @@ cd ~/.local/share/hush
 ./install.sh
 ```
 
-The installer:
+The installer is safe to re-run. It converges the machine toward the same
+setup without reinstalling applications unnecessarily:
 
-1. Installs AeroSpace and Karabiner-Elements when absent.
-2. Backs up and installs their minimal configuration.
-3. Compiles and signs the native bar locally.
-4. Starts one user LaunchAgent for the bar.
-5. Hides Apple's menu bar on the desktop and shows it in native fullscreen.
+1. Reuses existing Ghostty or Tinycast apps, even without Homebrew receipts.
+2. Repairs Homebrew-managed apps whose application bundle was moved or removed.
+3. Installs only missing apps, then atomically applies the Hush configurations.
+4. Compiles and signs the small native bar locally, then starts one LaunchAgent.
+5. Repairs Tinycast, Spotlight and menu-bar settings on every run.
 
 Its manifest at `~/.local/state/hush/manifest` records everything needed to
-restore the previous state.
+restore the previous state. If an install or uninstall is interrupted, the
+recovery data remains in place for the next run.
 
 ## Permissions
 
@@ -93,8 +93,17 @@ cd ~/.local/share/hush
 ./uninstall.sh
 ```
 
-Only changes recorded by the installer are removed. Previous AeroSpace and
-Karabiner configuration is restored.
+Only changes recorded by the installer are removed. Previous AeroSpace,
+Karabiner and Ghostty configuration, Tinycast preferences, Spotlight shortcuts
+and menu-bar settings are restored. Apps that already existed are not removed.
+
+## Structure
+
+- `Brewfile` declares the five required casks.
+- `config/` contains only the three managed app configurations.
+- `helper/bar.swift` is the single native bar process.
+- `scripts/lib.sh` owns backup, atomic replacement and restoration primitives.
+- `scripts/verify.sh` and `scripts/test-installer.sh` verify the build and recovery behavior.
 
 ## Credits
 
@@ -104,3 +113,5 @@ Hush is derived from [OMACOSY](https://github.com/paulsp94/omacosy) and uses
 
 MIT licensed. The original and modification notices are preserved in
 [LICENSE](LICENSE).
+
+Built with intentional guidance from a human.

@@ -5,22 +5,38 @@
 // location, bluetooth, screen capture, launcher, theme engine or shell polling.
 import AppKit
 import CoreAudio
+import Darwin
 import IOKit.ps
 
 // DisplayServices is the private API used by Control Center for the built-in
-// panel. Failure hides the brightness item; it never guesses a value.
-@_silgen_name("DisplayServicesGetBrightness")
-func DSGetBrightness(_ display: CGDirectDisplayID, _ value: UnsafeMutablePointer<Float>) -> Int32
-@_silgen_name("DisplayServicesSetBrightness")
-func DSSetBrightness(_ display: CGDirectDisplayID, _ value: Float) -> Int32
+// panel. Resolve it at runtime so a missing private framework cannot crash-loop
+// the bar; failure simply hides the brightness item.
+typealias DSGetBrightnessProc = @convention(c)
+    (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+typealias DSSetBrightnessProc = @convention(c) (CGDirectDisplayID, Float) -> Int32
 typealias DSBrightnessProc = @convention(c)
     (UnsafeRawPointer?, CGDirectDisplayID, UnsafeRawPointer?, UnsafeRawPointer?) -> Void
-@_silgen_name("DisplayServicesRegisterForBrightnessChangeNotifications")
-func DSRegisterBrightnessNotifications(
-    _ display: CGDirectDisplayID,
-    _ context: UnsafeMutableRawPointer?,
-    _ callback: DSBrightnessProc
-) -> Int32
+typealias DSRegisterBrightnessProc = @convention(c)
+    (CGDirectDisplayID, UnsafeMutableRawPointer?, DSBrightnessProc) -> Int32
+
+let displayServices = dlopen(
+    "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices",
+    RTLD_LAZY | RTLD_LOCAL)
+let dsGetBrightness: DSGetBrightnessProc? = displayServices.flatMap { handle in
+    dlsym(handle, "DisplayServicesGetBrightness").map {
+        unsafeBitCast($0, to: DSGetBrightnessProc.self)
+    }
+}
+let dsSetBrightness: DSSetBrightnessProc? = displayServices.flatMap { handle in
+    dlsym(handle, "DisplayServicesSetBrightness").map {
+        unsafeBitCast($0, to: DSSetBrightnessProc.self)
+    }
+}
+let dsRegisterBrightness: DSRegisterBrightnessProc? = displayServices.flatMap { handle in
+    dlsym(handle, "DisplayServicesRegisterForBrightnessChangeNotifications").map {
+        unsafeBitCast($0, to: DSRegisterBrightnessProc.self)
+    }
+}
 
 let barHeight: CGFloat = 32
 let workspaceFile = "/tmp/hush-bar-ws-\(getuid())"
@@ -102,13 +118,15 @@ func builtinDisplayID() -> CGDirectDisplayID {
 
 func readBrightness() -> Int? {
     var value: Float = 0
-    guard DSGetBrightness(builtinDisplayID(), &value) == 0, value.isFinite else { return nil }
+    guard let get = dsGetBrightness,
+          get(builtinDisplayID(), &value) == 0, value.isFinite else { return nil }
     return Int((value * 100).rounded())
 }
 
 func writeBrightness(_ percent: Int) {
+    guard let set = dsSetBrightness else { return }
     let bounded = min(100, max(0, percent))
-    _ = DSSetBrightness(builtinDisplayID(), Float(bounded) / 100)
+    _ = set(builtinDisplayID(), Float(bounded) / 100)
     setState { $0.brightness = bounded }
 }
 
@@ -509,13 +527,16 @@ attachVolumeListeners()
 let brightnessCallback: DSBrightnessProc = { _, _, _, _ in
     DispatchQueue.main.async { setState { $0.brightness = readBrightness() } }
 }
-_ = DSRegisterBrightnessNotifications(builtinDisplayID(), nil, brightnessCallback)
+// The listener follows the built-in display present at launch. Screen-layout
+// changes still rebuild the bar surfaces independently.
+_ = dsRegisterBrightness?(builtinDisplayID(), nil, brightnessCallback)
 
 func scheduleClock() {
     updateClock()
     let now = Date()
-    let next = Calendar.current.date(
-        bySetting: .second, value: 0, of: now.addingTimeInterval(60)) ?? now.addingTimeInterval(60)
+    let next = Calendar.current.nextDate(
+        after: now, matching: DateComponents(second: 0), matchingPolicy: .nextTime)
+        ?? now.addingTimeInterval(60)
     DispatchQueue.main.asyncAfter(deadline: .now() + max(1, next.timeIntervalSinceNow)) {
         scheduleClock()
     }

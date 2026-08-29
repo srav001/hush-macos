@@ -8,16 +8,24 @@ trap 'rm -rf "$VERIFY_DIR"' EXIT
 
 cd "$REPO_DIR"
 
-bash -n install.sh uninstall.sh scripts/verify.sh
+bash -n install.sh uninstall.sh scripts/lib.sh scripts/verify.sh scripts/test-installer.sh
 jq empty config/karabiner/karabiner.json
 [ "$(rg -c '^\[mode\..*\.binding\]$' config/aerospace/aerospace.toml)" -eq 2 ]
 [ "$(rg -c '^cmd-ctrl-alt-[1-9] = ' config/aerospace/aerospace.toml)" -eq 9 ]
 
-swiftc -O -F /System/Library/PrivateFrameworks -framework DisplayServices \
-    -o "$VERIFY_DIR/hush-bar" helper/bar.swift
+ghostty="/Applications/Ghostty.app/Contents/MacOS/ghostty"
+[ ! -x "$ghostty" ] || "$ghostty" +validate-config \
+    --config-file="$REPO_DIR/config/ghostty/config"
+
+swiftc -O -o "$VERIFY_DIR/hush-bar" helper/bar.swift
 codesign --force --sign - --identifier com.srav001.hush.bar \
     "$VERIFY_DIR/hush-bar" >/dev/null
 codesign --verify --strict "$VERIFY_DIR/hush-bar"
+
+if otool -L "$VERIFY_DIR/hush-bar" | grep -q DisplayServices; then
+    printf 'The bar hard-links the private DisplayServices framework.\n' >&2
+    exit 1
+fi
 
 if rg -n 'URLSession|CoreLocation|CoreBluetooth|CoreWLAN|IOBluetooth|ScreenCaptureKit' \
     helper/bar.swift; then
@@ -25,13 +33,12 @@ if rg -n 'URLSession|CoreLocation|CoreBluetooth|CoreWLAN|IOBluetooth|ScreenCaptu
     exit 1
 fi
 
-if rg -n '\.zshrc|TrackpadFourFinger|aerospace-swipe|config/ghostty|open -a Tinycast' \
-    install.sh uninstall.sh; then
+if rg -n '\.zshrc|TrackpadFourFinger|aerospace-swipe' install.sh uninstall.sh scripts/lib.sh; then
     printf 'Installer unexpectedly touches an excluded user feature.\n' >&2
     exit 1
 fi
 
-expected_casks=$'aerospace\nkarabiner-elements'
+expected_casks=$'aerospace\nfont-roboto-mono-nerd-font\nghostty\nkarabiner-elements\ntinycast'
 actual_casks="$(brew bundle list --cask --file=Brewfile | sort)"
 [ "$actual_casks" = "$expected_casks" ] || {
     printf 'Unexpected Brewfile casks:\n%s\n' "$actual_casks" >&2
@@ -39,4 +46,4 @@ actual_casks="$(brew bundle list --cask --file=Brewfile | sort)"
 }
 
 git diff --check
-printf 'PASS: syntax, configuration, privacy boundary, compilation and signing\n'
+printf 'PASS: syntax, settings, privacy boundary, compilation and signing\n'

@@ -1,18 +1,8 @@
 #!/usr/bin/env bash
-# Install Hush. Safe to re-run after local changes.
+# Install Hush. Safe to re-run to repair or update the environment.
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STATE_DIR="$HOME/.local/state/hush"
-MANIFEST="$STATE_DIR/manifest"
-BIN_DIR="$HOME/.local/bin"
-AGENT_DIR="$HOME/Library/LaunchAgents"
-UID_N="$(id -u)"
-
-log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-die() { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
-mark() { grep -qxF "$1" "$MANIFEST" 2>/dev/null || printf '%s\n' "$1" >> "$MANIFEST"; }
-have() { grep -qxF "$1" "$MANIFEST" 2>/dev/null; }
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts/lib.sh"
 
 [ "$(uname -s)" = Darwin ] || die "macOS is required"
 [ "$(uname -m)" = arm64 ] || die "this build targets Apple silicon"
@@ -20,14 +10,12 @@ macos_major="$(sw_vers -productVersion | cut -d. -f1)"
 [ "$macos_major" -ge 26 ] || die "macOS 26 or newer is required"
 command -v brew >/dev/null 2>&1 || die "Homebrew is required: https://brew.sh"
 command -v swiftc >/dev/null 2>&1 || die "Apple Command Line Tools are required: xcode-select --install"
-[ ! -e "$HOME/.local/state/omacosy/manifest" ] || \
+[ ! -e "$HOME/.local/state/omacosy/manifest" ] ||
     die "OMACOSY appears active; uninstall it before installing Hush"
 
 if [ ! -f "$MANIFEST" ]; then
-    for owned_path in \
-        "$BIN_DIR/hush-bar" \
-        "$AGENT_DIR/com.srav001.hush.bar.plist"; do
-        [ ! -e "$owned_path" ] && [ ! -L "$owned_path" ] || \
+    for owned_path in "$BAR_BIN" "$BAR_PLIST"; do
+        [ ! -e "$owned_path" ] && [ ! -L "$owned_path" ] ||
             die "existing unowned runtime file would be replaced: $owned_path"
     done
 fi
@@ -37,111 +25,179 @@ touch "$MANIFEST"
 chmod 700 "$STATE_DIR"
 chmod 600 "$MANIFEST"
 
-record_file() { # source path, backup name
-    local source="$1" name="$2"
-    have "recorded-file $name" && return
-    if [ -e "$source" ] || [ -L "$source" ]; then
-        cp -pPR "$source" "$STATE_DIR/$name.before"
-        mark "had-file $name"
+# Preserve backups created by the first Hush installer while migrating its
+# old inline default records to the recoverable file format.
+migrate_default() { # legacy manifest name
+    local name="$1" previous
+    have "recorded-default $name" && return
+    previous="$(sed -n "s/^$name //p" "$MANIFEST" | head -1)"
+    [ -n "$previous" ] || return 0
+    if [ "$previous" != ABSENT ]; then
+        printf '%s\n' "$previous" > "$STATE_DIR/$name.before"
+        mark "had-default $name"
     fi
-    mark "recorded-file $name"
+    mark "recorded-default $name"
 }
+migrate_default menu-bar
+migrate_default menu-bar-fullscreen
 
-record_file "$HOME/.config/aerospace/aerospace.toml" aerospace.toml
-record_file "$HOME/.config/karabiner/karabiner.json" karabiner.json
+while IFS='|' read -r name _ destination _; do
+    record_file "$destination" "$name"
+done < <(config_rows)
 
-record_default() { # defaults key, manifest name
-    grep -q "^$2 " "$MANIFEST" && return
-    if previous="$(defaults read NSGlobalDomain "$1" 2>/dev/null)"; then
-        mark "$2 $previous"
-    else
-        mark "$2 ABSENT"
-    fi
-}
-record_default _HIHideMenuBar menu-bar
-record_default AppleMenuBarVisibleInFullscreen menu-bar-fullscreen
+record_default NSGlobalDomain _HIHideMenuBar menu-bar
+record_default NSGlobalDomain AppleMenuBarVisibleInFullscreen menu-bar-fullscreen
+record_default com.tinycast.app showInMenuBar tinycast-menu
+record_default com.tinycast.app compactMode tinycast-compact
+record_default com.tinycast.app popToRootTimeout tinycast-timeout
+record_default com.tinycast.app hotkey.togglePalette tinycast-hotkey
+record_spotlight_shortcut 64
+record_spotlight_shortcut 65
 
-log "Installing AeroSpace and Karabiner"
+log "Installing or repairing the required applications"
+if ! brew tap 2>/dev/null | grep -qxF nikitabobko/tap; then
+    mark "installed-tap nikitabobko/tap"
+fi
 if ! brew trust --json=v1 2>/dev/null | grep -q '"nikitabobko/tap"'; then
-    brew trust --tap nikitabobko/tap
     mark "trusted-tap nikitabobko/tap"
+    brew trust --tap nikitabobko/tap
 fi
-before_casks="$(brew list --cask 2>/dev/null | sort)"
-before_taps="$(brew tap 2>/dev/null | sort)"
-if ! brew bundle --file="$REPO_DIR/Brewfile"; then
-    after_casks="$(brew list --cask 2>/dev/null | sort)"
-    after_taps="$(brew tap 2>/dev/null | sort)"
-    comm -13 <(printf '%s\n' "$before_casks") <(printf '%s\n' "$after_casks") |
-        while IFS= read -r cask; do [ -n "$cask" ] && mark "installed-cask $cask"; done
-    comm -13 <(printf '%s\n' "$before_taps") <(printf '%s\n' "$after_taps") |
-        while IFS= read -r tap; do [ -n "$tap" ] && mark "installed-tap $tap"; done
+
+skip_casks=""
+for specification in "ghostty|Ghostty|com.mitchellh.ghostty" "tinycast|Tinycast|com.tinycast.app"; do
+    IFS='|' read -r cask app bundle_id <<< "$specification"
+    if ! brew_has_cask "$cask" && app_bundle_path "$app" "$bundle_id" >/dev/null; then
+        skip_casks="${skip_casks:+$skip_casks }$cask"
+        log "Reusing existing $app"
+    fi
+done
+
+while IFS= read -r cask; do
+    if ! brew_has_cask "$cask" && [[ " $skip_casks " != *" $cask "* ]]; then
+        # Ownership intent is durable before Homebrew mutates the machine.
+        mark "installed-cask $cask"
+    fi
+done < <(brew bundle list --cask --file="$REPO_DIR/Brewfile")
+
+HOMEBREW_BUNDLE_CASK_SKIP="$skip_casks" \
+    brew bundle --no-upgrade --file="$REPO_DIR/Brewfile" ||
     die "Homebrew did not complete; resolve the error and run install.sh again"
+
+for specification in "ghostty|Ghostty|com.mitchellh.ghostty" "tinycast|Tinycast|com.tinycast.app"; do
+    IFS='|' read -r cask app bundle_id <<< "$specification"
+    if brew_has_cask "$cask" && ! app_bundle_path "$app" "$bundle_id" >/dev/null; then
+        log "Repairing missing $app application bundle"
+        brew reinstall --cask "$cask"
+    fi
+    app_bundle_path "$app" "$bundle_id" >/dev/null || die "$app is installed but cannot be found"
+done
+
+ghostty_app="$(app_bundle_path Ghostty com.mitchellh.ghostty)"
+"$ghostty_app/Contents/MacOS/ghostty" +validate-config \
+    --config-file="$REPO_DIR/config/ghostty/config"
+jq empty "$REPO_DIR/config/karabiner/karabiner.json"
+
+log "Installing configurations atomically"
+while IFS='|' read -r _ source destination mode; do
+    replace_file "$source" "$destination" "$mode"
+done < <(config_rows)
+
+tinycast_repair=false
+default_equals com.tinycast.app showInMenuBar bool 0 || tinycast_repair=true
+default_equals com.tinycast.app compactMode bool 0 || tinycast_repair=true
+default_equals com.tinycast.app popToRootTimeout int 0 || tinycast_repair=true
+tinycast_hotkey='{"combo":{"_0":{"carbonModifiers":256,"carbonKeyCode":49}}}'
+default_equals com.tinycast.app hotkey.togglePalette string "$tinycast_hotkey" || tinycast_repair=true
+if $tinycast_repair; then
+    osascript -e 'quit app "Tinycast"' 2>/dev/null || true
+    write_default com.tinycast.app showInMenuBar bool false
+    write_default com.tinycast.app compactMode bool false
+    write_default com.tinycast.app popToRootTimeout int 0
+    write_default com.tinycast.app hotkey.togglePalette string "$tinycast_hotkey"
 fi
-after_casks="$(brew list --cask 2>/dev/null | sort)"
-after_taps="$(brew tap 2>/dev/null | sort)"
-comm -13 <(printf '%s\n' "$before_casks") <(printf '%s\n' "$after_casks") |
-    while IFS= read -r cask; do [ -n "$cask" ] && mark "installed-cask $cask"; done
-comm -13 <(printf '%s\n' "$before_taps") <(printf '%s\n' "$after_taps") |
-    while IFS= read -r tap; do [ -n "$tap" ] && mark "installed-tap $tap"; done
 
-log "Installing minimal configurations"
-mkdir -p "$HOME/.config/aerospace" "$HOME/.config/karabiner"
-cp "$REPO_DIR/config/aerospace/aerospace.toml" "$HOME/.config/aerospace/aerospace.toml"
-cp "$REPO_DIR/config/karabiner/karabiner.json" "$HOME/.config/karabiner/karabiner.json"
-chmod 600 "$HOME/.config/aerospace/aerospace.toml" \
-    "$HOME/.config/karabiner/karabiner.json"
+# Command+Space belongs to Tinycast; preserve and disable only Spotlight's two
+# conflicting entries instead of replacing the whole shortcuts domain.
+update_spotlight_shortcut 64 \
+    '{"enabled":false,"value":{"type":"standard","parameters":[32,49,1048576]}}'
+update_spotlight_shortcut 65 \
+    '{"enabled":false,"value":{"type":"standard","parameters":[32,49,1572864]}}'
 
-log "Compiling the bar"
-swiftc -O -F /System/Library/PrivateFrameworks -framework DisplayServices \
-    -o "$BIN_DIR/hush-bar" "$REPO_DIR/helper/bar.swift"
-codesign --force --sign - --identifier com.srav001.hush.bar "$BIN_DIR/hush-bar" >/dev/null
+write_default NSGlobalDomain _HIHideMenuBar bool true
+write_default NSGlobalDomain AppleMenuBarVisibleInFullscreen bool true
 
-cat > "$AGENT_DIR/com.srav001.hush.bar.plist" <<PLIST
+log "Compiling the native bar"
+bar_temporary="$(mktemp "$BIN_DIR/.hush-bar.XXXXXX")"
+plist_temporary=""
+cleanup() {
+    [ -z "$bar_temporary" ] || rm -f "$bar_temporary"
+    [ -z "$plist_temporary" ] || rm -f "$plist_temporary"
+}
+trap cleanup EXIT
+swiftc -O -o "$bar_temporary" "$REPO_DIR/helper/bar.swift"
+chmod 755 "$bar_temporary"
+codesign --force --sign - --identifier "$BAR_LABEL" "$bar_temporary" >/dev/null
+codesign --verify --strict "$bar_temporary"
+mv -f "$bar_temporary" "$BAR_BIN"
+bar_temporary=""
+
+plist_temporary="$(mktemp "$AGENT_DIR/.hush-bar.XXXXXX")"
+cat > "$plist_temporary" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>com.srav001.hush.bar</string>
-  <key>ProgramArguments</key><array><string>$BIN_DIR/hush-bar</string></array>
+  <key>Label</key><string>$BAR_LABEL</string>
+  <key>ProgramArguments</key><array><string>$BAR_BIN</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>5</integer>
 </dict></plist>
 PLIST
+plutil -lint "$plist_temporary" >/dev/null
+chmod 600 "$plist_temporary"
+mv -f "$plist_temporary" "$BAR_PLIST"
+plist_temporary=""
 
-plutil -lint "$AGENT_DIR/com.srav001.hush.bar.plist" >/dev/null
-
-log "Starting AeroSpace"
+log "Starting Hush"
 open -a AeroSpace
-sleep 1
-aerospace reload-config 2>/dev/null || true
+aerospace_ready=false
+for _ in {1..20}; do
+    if aerospace list-workspaces --all >/dev/null 2>&1; then
+        aerospace_ready=true
+        break
+    fi
+    sleep 0.25
+done
+$aerospace_ready || die "AeroSpace did not become ready"
+aerospace reload-config
 
-log "Starting the minimal services"
-restart_agent() { # label, plist
-    launchctl bootout "gui/$UID_N/$1" 2>/dev/null || true
-    launchctl bootstrap "gui/$UID_N" "$2" 2>/dev/null || {
-        sleep 1
-        launchctl bootstrap "gui/$UID_N" "$2"
-    }
-    launchctl kickstart -k "gui/$UID_N/$1"
-}
-restart_agent com.srav001.hush.bar "$AGENT_DIR/com.srav001.hush.bar.plist"
+launchctl bootout "gui/$UID_N/$BAR_LABEL" 2>/dev/null || true
+bar_started=false
+for _ in {1..10}; do
+    if launchctl bootstrap "gui/$UID_N" "$BAR_PLIST" 2>/dev/null; then
+        bar_started=true
+        break
+    fi
+    sleep 0.25
+done
+$bar_started || die "The Hush bar LaunchAgent could not be started"
+launchctl kickstart -k "gui/$UID_N/$BAR_LABEL"
 
-# Karabiner's remap runs in its core service. Its menu and notification
-# helpers are unnecessary after first-run approval and otherwise idle heavily.
+# Clear persistent overrides left by Hush's first installer once. The current
+# design only stops these optional helpers for this login session.
+if grep -q '^menu-bar ' "$MANIFEST" && ! have cleared-legacy-karabiner-overrides; then
+    launchctl enable "gui/$UID_N/org.pqrs.service.agent.Karabiner-Menu" 2>/dev/null || true
+    launchctl enable "gui/$UID_N/org.pqrs.service.agent.Karabiner-NotificationWindow" \
+        2>/dev/null || true
+    mark cleared-legacy-karabiner-overrides
+fi
 launchctl kickstart -k "gui/$UID_N/org.pqrs.service.agent.karabiner_console_user_server" \
     2>/dev/null || true
 for agent in Karabiner-Menu Karabiner-NotificationWindow; do
-    if launchctl print-disabled "gui/$UID_N" 2>/dev/null |
-        grep -q "\"org.pqrs.service.agent.$agent\" => true"; then
-        mark "agent-was-disabled $agent"
-    fi
     launchctl bootout "gui/$UID_N/org.pqrs.service.agent.$agent" 2>/dev/null || true
-    launchctl disable "gui/$UID_N/org.pqrs.service.agent.$agent" 2>/dev/null || true
 done
-pkill -f 'Karabiner-Menu|Karabiner-NotificationWindow' 2>/dev/null || true
 
-defaults write NSGlobalDomain _HIHideMenuBar -bool true
-defaults write NSGlobalDomain AppleMenuBarVisibleInFullscreen -bool true
+open -g -a Tinycast
 killall cfprefsd 2>/dev/null || true
 killall SystemUIServer 2>/dev/null || true
 
@@ -155,6 +211,6 @@ Hush installed. One-time permissions:
   1. AeroSpace: Privacy & Security -> Accessibility
   2. Karabiner-Elements: approve its driver and Input Monitoring
 
-Existing Ghostty, Tinycast, shell configuration and native trackpad gestures were not changed.
+Ghostty and Tinycast were reused when already present; their Hush settings are repaired on every run.
 Uninstall: ./uninstall.sh
 EOF
